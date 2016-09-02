@@ -1,15 +1,739 @@
+<!-- 
+
+This report has been custom-built for ESPN by Mixpanel's client solutions team, 
+and is not warranted or maintained alongside the core Mixpanel product. 
+As the end-user, you are solely responsible for any bug fixes, feature updates, 
+and ongoing code changes or iterations.
+
+-->
+
 <!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/css/reset.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.css">
+    <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,400italic' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.1/css/font-awesome.min.css">
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
+    <script src="//d3js.org/d3.v4.0.0-alpha.15.min.js"></script>
+    <script src="main.js"></script>
   </head>
-  <body class="mixpanel-platform-body">
-    <h1>Hello, World!</h1>
-    <script>
-      // Run queries and display results here
+  <body>
+    <div class="header">
+      <img class="logo" src="https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg">
+      <h1>Content Dashboard</h1>
+      <div class="label header-label">Powered By</div>
+      <img class="logo mixpanel" src="https://worldvectorlogo.com/logos/mixpanel.svg">
+    </div>
+    <div class="inputs">
+        <div class="filters">
+            <div class="input">
+                <div class="label dropdown-label">Filter by Platform:</div>
+                <div id="platform-dropdown" class="dropdown left-dropdown"></div>
+            </div>
+            <div class="input">
+                <div class="label dropdown-label">Filter by Edition:</div>
+                <div id="edition-dropdown" class="dropdown right-dropdown"></div>
+            </div>
+        </div>
+        <div class="sort">
+            <div class="input">
+                <div class="label dropdown-label">Sort:</div>
+                <div id="sort-dropdown" class="dropdown left-dropdown"></div>
+            </div>
+            <div class="input">
+                <div class="label dropdown-label">Sort by:</div>
+                <div id="sort-by-dropdown" class="dropdown right-dropdown"></div>
+            </div>
+        </div>
+    </div>
+    <div class="loading"></div>
+    <div id="all-slots"></div>
+
+    <script type="text/jql" id="slot-slots-jql">
+        // This report has been custom-built for ESPN by Mixpanel's client solutions team, 
+        // and is not warranted or maintained alongside the core Mixpanel product. 
+        // As the end-user, you are solely responsible for any bug fixes, feature updates, 
+        // and ongoing code changes or iterations.
+
+        var engagementEvents = {
+            'Video Started': 5,
+            'Page View': 3,
+            'Social Share': 1,
+        };
+
+        var sources = {
+            'Social': ['facebook', 'twitter', 't.co', 'lnkd.in', 'linkedin', 'pinterest',],
+            'Search': ['google', 'bing', 'yahoo',],
+            'Direct': ['direct'],
+            'Internal': ['espn']
+        };
+
+        function readSources(domain) {
+            var types = Object.keys(sources);
+            for (var i = 0, j = types.length; i < j; i++) {
+                for (var k = 0, l = sources[types[i]].length; k < l; k++) {
+                    if (domain.indexOf(sources[types[i]][k]) > -1) {
+                        return types[i];
+                    }
+                }
+            }
+            return 'Other';
+        }
+        function getTrafficSource(event) {
+            var url = event.properties['Referrer URL'];
+            if (!url) { return 'Direct'; }
+            return readSources(url);
+        }
+
+        function getPlatform(deviceName) {
+            if (!deviceName) {
+                return 'desktop';
+            } else {
+                return 'mobile';
+            }
+        }
+
+        function fifteenMinutes(event) {
+          var date = new Date(event.time);
+          var minutes = date.getMinutes();
+
+          // set minutes, rounded to nearest quarter hour
+          if (minutes === 0) date.setMinutes(0);
+          else if (minutes <= 15) date.setMinutes(15);
+          else if (minutes <= 30) date.setMinutes(30);
+          else if (minutes <= 45) date.setMinutes(45);
+          else {
+            date.setHours(date.getHours() + 1);
+            date.setMinutes(0);
+          }
+          // set s/ms to 0
+          date.setSeconds(0);
+          date.setMilliseconds(0);
+          
+          // return time
+          return date.getTime();
+        }
+
+        function msToTime(duration) {
+            var minutes = parseInt((duration/(1000*60))%60);
+            var hours = parseInt((duration/(1000*60*60))%24);
+
+            return [hours, minutes];
+        }
+
+        function main() {
+          return Events({
+            from_date: params.from_date,
+            to_date: params.to_date
+          })
+          .filter(function(event) { 
+            var editionFilter = false;
+            var platformFilter = false;
+            if (params.edition === 'all' || event.properties['Edition Name'] == params.edition) editionFilter = true;
+            if (params.platform === 'all' || getPlatform(event.properties.$device) == params.platform) platformFilter = true;
+            
+            return event.time > new Date() - 1000*60*60*10 && // event is within last 3 hours (with 4 hour TZ offset for EDT)
+                   _.keys(engagementEvents).indexOf(event.name) > -1 && // event is among engagement events defined globally
+                   editionFilter && // edition name filter is satisfied
+                   platformFilter && // platform filter is satisfied
+                   event.properties['Story Headline'] && // story headline exists
+                  // event.properties['Referrer URL'] == 'http://espn.go.com/' && // story is from home page slot
+                   event.properties['Referrer Placement Type'] == 'News Feed' && // story is in news feed
+                   event.properties['Referrer Slot'] && // referrer slot exists
+                   event.properties['Referrer Slot'] <= params.max_slots; // story is in given stories array
+          })
+          .groupBy(['properties.Referrer Slot', 'properties.Story Headline'], function(accumulators, events) {
+            var output = {
+              counts: {
+                'Page View': 0,
+                'Video Started': 0,
+                'Social Share': 0,
+              },
+              engagement: 0,
+              start_time: undefined,
+              end_time: undefined,
+              timeEngagement: {},
+              referral: {},
+            };
+            _.each(events, function(e) {
+              // add event to correct count
+              output.counts[e.name] += 1;
+              
+              // add to engagement score according to score calc object
+              var engagement = engagementEvents[e.name];
+              output.engagement += engagement;
+              // add time specifc engagement stats
+              var timeInterval = fifteenMinutes(e);
+              output.timeEngagement[timeInterval] = output.timeEngagement[timeInterval] || 0;
+              output.timeEngagement[timeInterval] += engagement;
+              
+              // add time specific referral sources
+              var source = getTrafficSource(e);
+              output.referral[timeInterval] = output.referral[timeInterval] || {};
+              output.referral[timeInterval][source] = output.referral[timeInterval][source] || 0;
+              output.referral[timeInterval][source] += 1;
+              
+              // edit applicable story start & end time
+              if (!output.start_time || e.time < output.start_time) output.start_time = e.time;
+              if (!output.end_time || e.time > output.end_time) output.end_time = e.time;
+            });
+            _.each(accumulators, function(a) {
+              // merge event counts
+              _.each(a.counts, function(val, eventName) {
+                output.counts[eventName] += val;
+              });
+              
+              // sum engagement score
+              output.engagement += a.engagement;
+              // merge time specific engagement
+              _.each(a.timeEngagement, function(count, timeInterval) {
+                output.timeEngagement[timeInterval] = output.timeEngagement[timeInterval] || 0;
+                output.timeEngagement[timeInterval] += count;
+              });
+              
+              // merge time specific referral sources
+              _.each(a.referral, function(sourceObject, timeInterval) {
+                _.each(sourceObject, function(count, source) {
+                  output.referral[timeInterval] = output.referral[timeInterval] || {};
+                  output.referral[timeInterval][source] = output.referral[timeInterval][source] || 0;
+                  output.referral[timeInterval][source] += count;
+                });
+              });
+
+              // edit applicable story start & end time
+              if (!output.start_time || a.start_time < output.start_time) output.start_time = a.start_time;
+              if (!output.end_time || a.end_time > output.end_time) output.end_time = a.end_time;
+            });
+            return output;
+          })
+          .map(function(item) {
+            // calculate time in position
+            var total = msToTime(item.value.end_time - item.value.start_time);
+            item.value.total_hr = total[0];
+            item.value.total_min = total[1];
+            
+            return item;
+          })
+          .groupBy(['key.0'], function(accumulators, items) {
+            // initialize result object
+            var result = {
+              current_story: undefined,
+              current_story_end: undefined,
+              engagement: 0,
+              views: 0,
+              videos: 0,
+              shares: 0,
+              overall_start: undefined,
+              overall_end: undefined,
+              overall_hr: 0,
+              overall_min: 0,
+              timeEngagement: {},
+              referral: {},
+              prev_stories: [],
+            }
+            
+            _.each(items, function(i) {
+              // add story headline to item value
+              i.value.story = i.key[1];
+              // add object to prev stories array
+              // create new object to avoid excessive data (don't need timeEngagement or referral)
+              var prev_story = {
+                counts: i.value.counts,
+                engagement: i.value.engagement,
+                start_time: i.value.start_time,
+                end_time: i.value.end_time,
+                total_hr: i.value.total_hr,
+                total_min: i.value.total_min,
+                story: i.value.story,
+              }
+              result.prev_stories.push(prev_story);
+              
+              // add counts
+              result.views += i.value.counts['Page View'];
+              result.videos += i.value.counts['Video Started'];
+              result.shares += i.value.counts['Social Share'];
+
+              // add engagement
+              result.engagement += i.value.engagement;
+              _.each(i.value.timeEngagement, function(count, timeInterval) {
+                result.timeEngagement[timeInterval] = result.timeEngagement[timeInterval] || 0;
+                result.timeEngagement[timeInterval] += count;
+              });
+              
+              // add referral sources
+              _.each(i.value.referral, function(sourceObject, timeInterval) {
+                _.each(sourceObject, function(count, source) {
+                  result.referral[timeInterval] = result.referral[timeInterval] || {};
+                  result.referral[timeInterval][source] = result.referral[timeInterval][source] || 0;
+                  result.referral[timeInterval][source] += count;
+                });
+              });
+
+              //////// fix this
+              // change overall story start and end time if applicable
+              // if (!result.overall_start || i.value.start_time < result.overall_start) result.overall_start = i.value.start_time;
+              // if (!result.overall_end || i.value.end_time > result.overall_end) result.overall_end = i.value.end_time;
+              
+              // change current story if applicable
+              if (!result.current_story_end || i.value.end_time > result.current_story_end) {
+                result.current_story = i.value.story;
+                result.current_story_end = i.value.end_time;
+                result.overall_start = i.value.start_time;
+                result.overall_end = i.value.end_time;
+              }
+            });
+            _.each(accumulators, function(a) {
+              // add prev stories array from accumulator to existing prev stories array
+              result.prev_stories.concat(a.prev_stories);
+
+              // add counts
+              result.views += a.views;
+              result.videos += a.videos;
+              result.shares += a.shares;
+
+              // add engagement
+              result.engagement += a.engagement;
+              _.each(a.timeEngagement, function(count, timeInterval) {
+                result.timeEngagement[timeInterval] = result.timeEngagement[timeInterval] || 0;
+                result.timeEngagement[timeInterval] += count;
+              });
+              
+              // add referral sources
+              _.each(a.referral, function(sourceObject, timeInterval) {
+                _.each(sourceObject, function(count, source) {
+                  result.referral[timeInterval] = result.referral[timeInterval] || {};
+                  result.referral[timeInterval][source] = result.referral[timeInterval][source] || 0;
+                  result.referral[timeInterval][source] += count;
+                });
+              });
+              
+              // change overall story start and end time if applicable
+              // if (!result.overall_start || a.overall_start < result.overall_start) result.overall_start = a.overall_start;
+              // if (!result.overall_end || a.overall_end > result.overall_end) result.overall_end = a.overall_end;
+              
+              // change current story if applicable
+              if (!result.current_story_end || a.current_story_end > result.current_story_end) {
+                result.current_story = a.current_story;
+                result.current_story_end = a.current_story_end;
+                result.overall_start = a.overall_start;
+                result.overall_end = a.overall_end;
+              }
+            });
+            // sort prev stories array by start time to organize story information chronologically
+            if (result.prev_stories.length > 1) {
+              result.prev_stories = _.sortBy(result.prev_stories, item => item.start_time);
+            }
+            return result;
+          })
+          .map(function(item) {
+            // find total story time
+            var time = msToTime(item.value.overall_end - item.value.overall_start);
+            item.value.overall_hr = time[0];
+            item.value.overall_min = time[1];
+            
+            // find referral percentages
+            _.each(item.value.referral, function(sourceObject, timeInterval) {
+              var total = 0;
+              _.each(sourceObject, function(count, source) {
+                total += count;
+              });
+              _.each(sourceObject, function(count, source) {
+                item.value.referral[timeInterval][source] = (count/total).toFixed(3);
+              });
+            });
+
+            item.value.current_slot = item.key[0];
+            return item.value;
+          });
+        }
+    </script>
+
+    <script type="text/jql" id="slot-stories-jql">
+        // This report has been custom-built for ESPN by Mixpanel's client solutions team, 
+        // and is not warranted or maintained alongside the core Mixpanel product. 
+        // As the end-user, you are solely responsible for any bug fixes, feature updates, 
+        // and ongoing code changes or iterations.
+
+        var engagementEvents = {
+            'Video Started': 5,
+            'Page View': 3,
+            'Social Share': 1,
+        };
+
+        function getPublishDetail(event) {
+          return event.properties['Referrer Slot'] + ', ' + event.properties['Placement Type'] + ', ' + event.properties['Page Type'];
+        }
+
+        function getPlatform(deviceName) {
+            if (!deviceName) {
+                return 'desktop';
+            } else {
+                return 'mobile';
+            }
+        }
+
+        function msToTime(duration) {
+            var minutes = parseInt((duration/(1000*60))%60),
+                hours = parseInt((duration/(1000*60*60))%24);
+
+            return [hours, minutes];
+        }
+
+        function main() {
+          return Events({
+            from_date: params.from_date,
+            to_date: params.to_date
+          })
+          .filter(function(event) { 
+            var editionFilter = false,
+                platformFilter = false;
+            if (params.edition === 'all' || event.properties['Edition Name'] == params.edition) editionFilter = true;
+            if (params.platform === 'all' || getPlatform(event.properties.$device) == params.platform) platformFilter = true;
+            return event.time > new Date() - 1000*60*60*8 && // event is within last 3 hours (with 4 hour TZ offset for EDT)
+                   _.keys(engagementEvents).indexOf(event.name) > -1 && // event is among engagement events defined globally
+                   editionFilter && // edition name filter is satisfied
+                   platformFilter && // platform filter is satisfied
+                   event.properties['Story Headline'] && // story headline exists
+                   params.stories.indexOf(event.properties['Story Headline']) > -1; // story is in given stories array
+          })
+          .groupBy(['properties.Story Headline', getPublishDetail], function(accumulators, events) {
+            var output = {
+              counts: {
+                'Page View': 0,
+                'Video Started': 0,
+                'Social Share': 0,
+              },
+              engagement: 0,
+              start_time: undefined,
+              end_time: undefined
+            };
+            _.each(events, function(e) {
+              // add counts
+              output.counts[e.name] += 1;
+              // add engagement
+              output.engagement += engagementEvents[e.name];
+              // edit start and end time, if applicable
+              if (!output.start_time || e.time < output.start_time) output.start_time = e.time;
+              if (!output.end_time || e.time > output.end_time) output.end_time = e.time;
+            });
+            _.each(accumulators, function(a) {
+              // add counts
+              _.each(a.counts, function(val, eventName) {
+                output.counts[eventName] += val;
+              });
+              // add engagement
+              output.engagement += a.engagement;
+              // edit start and end time, if applicable
+              if (!output.start_time || a.start_time < output.start_time) output.start_time = a.start_time;
+              if (!output.end_time || a.end_time > output.end_time) output.end_time = a.end_time;
+            });
+            return output;
+          })
+          .map(function(item) {
+            // separate slot / placement / page info
+            var placementInfo = item.key[1].split(',');
+            item.value.slot = placementInfo[0];
+            item.value.placement = placementInfo[1];
+            item.value.page = placementInfo[2];
+            
+            // calculate time in position
+            var total = msToTime(item.value.end_time - item.value.start_time);
+            item.value.total_hr = total[0];
+            item.value.total_min = total[1];
+            
+            return item;
+          })
+          .groupBy(['key.0'], function(accumulators, items) {
+            // initialize result object
+            var result = {
+              current_slot: 0,
+              engagement: 0,
+              views: 0,
+              videos: 0,
+              shares: 0,
+              overall_start: undefined,
+              overall_end: undefined,
+              overall_hr: 0,
+              overall_min: 0,
+              referral: {},
+              stats: [],
+            }
+            
+            _.each(items, function(i) {
+              // add slot/placement/page type to referral object
+              var placement = i.value.slot + ',' + i.value.placement + ',' + i.value.page;
+              result.referral[placement] = result.referral[placement] || 0;
+              result.referral[placement] += i.value.counts['Page View'];
+              
+              // add object to stats array
+              result.stats.push(i.value);
+              
+              // add counts
+              result.engagement += i.value.engagement;
+              result.views += i.value.counts['Page View'];
+              result.videos += i.value.counts['Video Started'];
+              result.shares += i.value.counts['Social Share'];
+              
+              // change overall story start and end time if applicable
+              if (!result.overall_start || i.value.start_time < result.overall_start) result.overall_start = i.value.start_time;
+              if (!result.overall_end || i.value.end_time > result.overall_end) result.overall_end = i.value.end_time;
+            });
+            _.each(accumulators, function(a) {
+              // merge referral objects
+              _.each(a.referral, function(val, referralType) {
+                result.referral[referralType] = result.referral[referralType] || 0;
+                result.referral[referralType] += val;
+              });
+              // add stats array from accumulator to existing stats array
+              result.stats.concat(a.stats);
+              // add counts
+              result.engagement += a.engagement;
+              result.views += a.views;
+              result.videos += a.videos;
+              result.shares += a.shares;
+              // change overall story start and end time if applicable
+              if (!result.overall_start || a.overall_start < result.overall_start) result.overall_start = a.overall_start;
+              if (!result.overall_end || a.overall_end > result.overall_end) result.overall_end = a.overall_end;
+            });
+            // sort stats array by start time to organize story information chronologically
+            if (result.stats.length > 1) {
+              result.stats = _.sortBy(result.stats, item => item.start_time);
+            }
+            return result;
+          })
+          .map(function(item) {
+            var final = {};
+            var newReferral = [];
+            _.each(item.value.referral, function(val, referralType) {
+              // create object for each referral type and add to array
+              var obj = {
+                placement: referralType,
+                views: val,
+              };
+              newReferral.push(obj);
+            });
+            newReferral = _.sortBy(newReferral, item => -1 * item.views);
+            // keep top 5 referral types
+            newReferral.splice(5);
+            // set item referral object to newly constructed array
+            item.value.referral = newReferral;
+            
+            // find total story time
+            var time = msToTime(item.value.overall_end - item.value.overall_start);
+            item.value.overall_hr = time[0];
+            item.value.overall_min = time[1];
+            
+            // find slot
+            var story = item.key[0];
+            item.value.current_story = story;
+            
+            // return final object
+            final[story] = item.value;
+            return final;
+          });
+        }
+    </script>
+    <script type="text/jql" id="story-stories-jql">
+        // This report has been custom-built for ESPN by Mixpanel's client solutions team, 
+        // and is not warranted or maintained alongside the core Mixpanel product. 
+        // As the end-user, you are solely responsible for any bug fixes, feature updates, 
+        // and ongoing code changes or iterations.
+
+        var engagementEvents = {
+            'Video Started': 5,
+            'Page View': 3,
+            'Social Share': 1,
+        };
+
+        function getPublishDetail(event) {
+          return event.properties['Referrer Slot'] + ', ' + event.properties['Placement Type'] + ', ' + event.properties['Page Type'];
+        }
+
+        function getPlatform(deviceName) {
+            if (!deviceName) {
+                return 'desktop';
+            } else {
+                return 'mobile';
+            }
+        }
+
+        function msToTime(duration) {
+            var minutes = parseInt((duration/(1000*60))%60),
+                hours = parseInt((duration/(1000*60*60))%24);
+
+            return [hours, minutes];
+        }
+
+        function main() {
+          return Events({
+            from_date: params.from_date,
+            to_date: params.to_date
+          })
+          .filter(function(event) { 
+            var editionFilter = false,
+                platformFilter = false;
+            if (params.edition === 'all' || event.properties['Edition Name'] == params.edition) editionFilter = true;
+            if (params.platform === 'all' || getPlatform(event.properties.$device) == params.platform) platformFilter = true;
+            return event.time > new Date() - 1000*60*60*24 && // event is within last 3 hours (with 4 hour TZ offset for EDT)
+                   _.keys(engagementEvents).indexOf(event.name) > -1 && // event is among engagement events defined globally
+                   editionFilter && // edition name filter is satisfied
+                   platformFilter && // platform filter is satisfied
+                   event.properties['Story Headline']; // story headline exists
+          })
+          .groupBy(['properties.Story Headline', getPublishDetail], function(accumulators, events) {
+            var output = {
+              counts: {
+                'Page View': 0,
+                'Video Started': 0,
+                'Social Share': 0,
+              },
+              engagement: 0,
+              start_time: undefined,
+              end_time: undefined
+            };
+            _.each(events, function(e) {
+              // add counts
+              output.counts[e.name] += 1;
+              // add engagement
+              output.engagement += engagementEvents[e.name];
+              // edit start and end time, if applicable
+              if (!output.start_time || e.time < output.start_time) output.start_time = e.time;
+              if (!output.end_time || e.time > output.end_time) output.end_time = e.time;
+            });
+            _.each(accumulators, function(a) {
+              // add counts
+              _.each(a.counts, function(val, eventName) {
+                output.counts[eventName] += val;
+              });
+              // add engagement
+              output.engagement += a.engagement;
+              // edit start and end time, if applicable
+              if (!output.start_time || a.start_time < output.start_time) output.start_time = a.start_time;
+              if (!output.end_time || a.end_time > output.end_time) output.end_time = a.end_time;
+            });
+            return output;
+          })
+          .map(function(item) {
+            // separate slot / placement / page info
+            var placementInfo = item.key[1].split(',');
+            item.value.slot = placementInfo[0];
+            item.value.placement = placementInfo[1];
+            item.value.page = placementInfo[2];
+            
+            // calculate time in position
+            var total = msToTime(item.value.end_time - item.value.start_time);
+            item.value.total_hr = total[0];
+            item.value.total_min = total[1];
+            
+            return item;
+          })
+          .groupBy(['key.0'], function(accumulators, items) {
+            // initialize result object
+            var result = {
+              current_slot: undefined,
+              engagement: 0,
+              views: 0,
+              videos: 0,
+              shares: 0,
+              overall_start: undefined,
+              overall_end: undefined,
+              overall_hr: 0,
+              overall_min: 0,
+              referral: {},
+              stats: [],
+            }
+            
+            _.each(items, function(i) {
+              // add slot/placement/page type to referral object
+              var placement = i.value.slot + ',' + i.value.placement + ',' + i.value.page;
+              result.referral[placement] = result.referral[placement] || 0;
+              result.referral[placement] += i.value.counts['Page View'];
+              
+              // add object to stats array
+              result.stats.push(i.value);
+              
+              // add counts
+              result.engagement += i.value.engagement;
+              result.views += i.value.counts['Page View'];
+              result.videos += i.value.counts['Video Started'];
+              result.shares += i.value.counts['Social Share'];
+              
+              // change overall story start and end time if applicable
+              if (!result.overall_start || i.value.start_time < result.overall_start) result.overall_start = i.value.start_time;
+              if (!result.overall_end || i.value.end_time > result.overall_end) {
+                result.overall_end = i.value.end_time;
+                result.current_slot = i.value.slot;
+              }
+            });
+            _.each(accumulators, function(a) {
+              // merge referral objects
+              _.each(a.referral, function(val, referralType) {
+                result.referral[referralType] = result.referral[referralType] || 0;
+                result.referral[referralType] += val;
+              });
+              // add stats array from accumulator to existing stats array
+              result.stats.concat(a.stats);
+              // add counts
+              result.engagement += a.engagement;
+              result.views += a.views;
+              result.videos += a.videos;
+              result.shares += a.shares;
+              // change overall story start and end time if applicable
+              if (!result.overall_start || a.overall_start < result.overall_start) result.overall_start = a.overall_start;
+              if (!result.overall_end || a.overall_end > result.overall_end) {
+                result.overall_end = a.overall_end;
+                result.current_slot = a.current_slot;
+              }
+            });
+            // sort stats array by start time to organize story information chronologically
+            if (result.stats.length > 1) {
+              result.stats = _.sortBy(result.stats, item => item.start_time);
+            }
+            return result;
+          })
+          .map(function(item) {
+            var newReferral = [];
+            _.each(item.value.referral, function(val, referralType) {
+              // create object for each referral type and add to array
+              var obj = {
+                placement: referralType,
+                views: val,
+              };
+              newReferral.push(obj);
+            });
+            newReferral = _.sortBy(newReferral, item => -1 * item.views);
+            // keep top 5 referral types
+            newReferral.splice(5);
+            // set item referral object to newly constructed array
+            item.value.referral = newReferral;
+            
+            // find total story time
+            var time = msToTime(item.value.overall_end - item.value.overall_start);
+            item.value.overall_hr = time[0];
+            item.value.overall_min = time[1];
+            
+            // set story
+            var story = item.key[0];
+            item.value.current_story = story;
+            
+            return item.value;
+          })
+          .reduce(function(accumulators, items) {
+            var ret = accumulators.reduce(function(a,b) { return a.concat(b); }, []).concat(items);
+            ret.sort(function(a, b) {
+              if (params.sort === 'current_slot') {
+                return a[params.sort] - b[params.sort];
+              } else {
+                return b[params.sort] - a[params.sort];
+              }
+            });
+            return ret.slice(0, params.max_stories);
+          });
+        }
     </script>
   </body>
 </html>
