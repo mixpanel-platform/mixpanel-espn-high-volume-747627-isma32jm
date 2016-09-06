@@ -1,6 +1,6 @@
-// This report has been custom-built for ESPN by Mixpanel's client solutions team, 
-// and is not warranted or maintained alongside the core Mixpanel product. 
-// As the end-user, you are solely responsible for any bug fixes, feature updates, 
+// This report has been custom-built for ESPN by Mixpanel's client solutions team,
+// and is not warranted or maintained alongside the core Mixpanel product.
+// As the end-user, you are solely responsible for any bug fixes, feature updates,
 // and ongoing code changes or iterations.
 
 
@@ -18,6 +18,13 @@ var editionDropdown = {
         {label: 'All', value: 'all'},
     ]
 };
+
+var indexDropdown = {
+  items: [
+    { label: 'All', value: 'all'}
+  ]
+}
+
 var platformDropdown = {
     items: [
         {label: 'All', value: 'all'},
@@ -29,8 +36,9 @@ var sortDropdown = {
     items: [
         {label: 'Slots', value: 'slot'},
         {label: 'Stories', value: 'story'},
-    ]  
+    ]
 };
+
 var sortByDropdown = {
     items: [
         {label: 'Slot Number', value: 'current_slot'},
@@ -54,6 +62,18 @@ $(document).ready(function() {
         });
         // populate edition dropdown div
         $('#edition-dropdown').MPSelect(editionDropdown);
+    });
+
+    MP.api.query('api/2.0/events/properties/values', {
+        event: 'Page View',
+        name: 'Sport/League',
+    }).done(function(results) {
+        _.each(results, function(edition) {
+            // add each edition name to dropdown
+            indexDropdown.items.push({label: edition, value: edition});
+        });
+        // populate edition dropdown div
+        $('#index-dropdown').MPSelect(editionDropdown);
     });
 
     // populate platform dropdown div
@@ -89,7 +109,7 @@ $(document).ready(function() {
     slotSlotsScript = $.trim($('#slot-slots-jql').html());
     storyStoriesScript = $.trim($('#story-stories-jql').html());
     storySlotsScript = $.trim($('#story-slots-jql').html());
-    
+
     // populate dashboard
     $('.loading').show();
     $('.slot').hide();
@@ -113,9 +133,10 @@ function getAllData() {
     // collect variables
     var platform = $('#platform-dropdown').val();
     var edition = $('#edition-dropdown').val() == '' ? 'all' : $('#edition-dropdown').val();
+    var indexVal = $('#index-dropdown').val();
     // get data
     if (sort === 'story') {
-        var storyPromise = getStories(platform, edition, undefined, sortType);
+        var storyPromise = getStories(platform, edition, undefined, sortType, indexVal);
         // ensure jql queries occur in order, but other code can execute async
         storyPromise
             .then(function(storyData) {
@@ -163,14 +184,15 @@ function getAllData() {
     setTimeout(getAllData, 120000);
 }
 
-function getSlots(platform, edition, slots) {
+function getSlots(platform, edition, slots, indexVal) {
     // set base params
     var slotParams = {
         max_slots: totalSlots,
         from_date: date_to_string(_.now() - 1000*60*60*totalHours),
         to_date: date_to_string(_.now() - 1000*60*60*totalHours),
         edition: edition,
-        platform: platform
+        platform: platform,
+        index: indexVal
     };
     // call appropriate slots jql
     if (slots) {
@@ -183,13 +205,14 @@ function getSlots(platform, edition, slots) {
     }
 }
 
-function getStories(platform, edition, stories, sort) {
+function getStories(platform, edition, stories, sort, indexVal) {
     // set base params
     var storyParams = {
         from_date: date_to_string(_.now() - 1000*60*60*totalHours),
         to_date: date_to_string(_.now() - 1000*60*60*totalHours),
         edition: edition,
-        platform: platform,        
+        platform: platform,
+        index: indexVal
     };
     // call appropriate stories jql
     if (stories) {
@@ -217,10 +240,10 @@ function sortData(sort, sortType, slotData, storyData) {
         story: _.sortBy(storyData, item => parseInt(item.current_slot))
     }
     sortedData = _.first(_.sortBy(obj[sort], function(item, key) {
-        if (sortType === 'current_slot') return item[sortType]; 
+        if (sortType === 'current_slot') return item[sortType];
         else return -1 * item[sortType];
     }), totalSlots);
-    // loop through sorted data to produce final result 
+    // loop through sorted data to produce final result
     _.each(sortedData, function(val, index) {
         resultData.push({
             slot_num: val.current_slot,
@@ -261,17 +284,17 @@ function populateStories(stories) {
 function addSlot(num, slot) {
     if (slot === 'undefined') slot = '';
     // add slot div with structure to report body
-    $('<div id="slot' + num + '" class="slot">' + 
+    $('<div id="slot' + num + '" class="slot">' +
             '<div class="slot-num">' + slot + '</div>' +
             '<div class="card">' +
-                '<div class="current-slot">' + 
+                '<div class="current-slot">' +
                     '<h2>Slot Performance</h2>' +
                     '<div class="engagement-stats">' +
-                        '<div class="views metric"><div class="label">Views</div></div>' + 
-                        '<div class="starts metric"><div class="label">Video Starts</div></div>' + 
+                        '<div class="views metric"><div class="label">Views</div></div>' +
+                        '<div class="starts metric"><div class="label">Video Starts</div></div>' +
                         '<div class="shares metric"><div class="label">Shares</div></div>' +
                     '</div>' + // end engagement-stats div
-                    '<div class="slot-graph"></div>' + 
+                    '<div class="slot-graph"></div>' +
                     '<div class="referral-graph"></div>' +
                     '<h2>Slot History</h2>' +
                     '<div class="toggle-prev-stories">Show</div>' +
@@ -303,7 +326,7 @@ function displaySlot($div, slotData) {
     // display engagement stats
     displayEngagement($div, slotData);
 
-    // set up graph 
+    // set up graph
     var graphDivSelector = '#' + $div.attr('id') + ' .slot-graph';
 
     // format engagement data (line graph)
@@ -497,7 +520,7 @@ function addGraphLegend($div, colorObject) {
     // add series
     _.each(colorObject, function(color, label) {
         // for each label & color in object, add series to legend
-        $('<div class="legend-series">' + 
+        $('<div class="legend-series">' +
                 '<div class="series-color" style="background-color: ' + color + '"></div>' +
                 '<div class="series-label">' + label + '</div>' +
             '</div>')
@@ -517,7 +540,7 @@ function displayPrevStories($div, stories) {
 }
 
 function addPrevStory($div, story) {
-    // format stats 
+    // format stats
     var header, num, storyName, startStat, timeStat, engagement;
     if (story === 'header') {
         header = ' header-row';
@@ -538,18 +561,18 @@ function addPrevStory($div, story) {
     }
 
     // add story to div
-    $('<div class="prev-story' + header + '">' + 
+    $('<div class="prev-story' + header + '">' +
             '<div class="prev-cell prev-story-num">' + num + '</div>' +
             '<div class="prev-cell prev-story-headline">' + storyName + '</div>' +
             '<div class="prev-cell prev-story-stats">' +
                 '<div class="prev-story-stat">' + startStat + '</div>' +
-                '<div class="prev-story-stat">' + 
+                '<div class="prev-story-stat">' +
                     '<div class="prev-stat">' + timeStat + '</div>' +
                 '</div>' +
                 '<div class="prev-story-stat">' + engagement + '</div>' +
             '</div>' + // end prev story stats div
         '</div>') // end prev story div
-        .appendTo($div);  
+        .appendTo($div);
 }
 
 function displayStory($div, storyData) {
@@ -620,7 +643,7 @@ function displayTable($div, tableArray) {
         // calculate change in engagement from last position
         var lastEngagement = i > 0 ? tableArray[i-1].engagement : 0;
         row.change = lastEngagement === 0 ? 'N/A' : ((row.engagement - lastEngagement) / lastEngagement * 100).toFixed();
-        
+
         //add row to table
         addRow($div, row);
     }
@@ -637,14 +660,14 @@ function addRow($div, data, header) {
     var color = header ? '' : ' style="color: ' + colorFormat(data.change) + ';"';
 
     // add row to table
-    $('<div class="row ' + header + '">' + 
-            '<div class="cell">' + data.slot + '</div>' + 
-            '<div class="cell">' + data.placement + '</div>' + 
-            '<div class="cell">' + data.page + '</div>' + 
-            '<div class="cell">' + data.start + '</div>' + 
-            '<div class="cell">' + data.total_time + '</div>' + 
-            '<div class="cell">' + data.engagement + '</div>' + 
-            '<div class="cell"' + color + '>' + data.change + change + '</div>' + 
+    $('<div class="row ' + header + '">' +
+            '<div class="cell">' + data.slot + '</div>' +
+            '<div class="cell">' + data.placement + '</div>' +
+            '<div class="cell">' + data.page + '</div>' +
+            '<div class="cell">' + data.start + '</div>' +
+            '<div class="cell">' + data.total_time + '</div>' +
+            '<div class="cell">' + data.engagement + '</div>' +
+            '<div class="cell"' + color + '>' + data.change + change + '</div>' +
         '</div>')
         .appendTo($div);
 }
@@ -690,7 +713,7 @@ function addEngageChart(type, div, divName, number, title, data) {
                     },
             },
     }
-    
+
     // set up graph params; dependent on type of graph
     var params;
     if (type == 'bar') {
@@ -727,13 +750,12 @@ function addEngageChart(type, div, divName, number, title, data) {
             data: data
         }
     }
-    
     // reset graphs
     div.find('.graph-container').remove();
     // add new graph container with extra classes if needed
     var $graphDiv = $('<div class="graph-container"></div>').appendTo(div);
-    $('<div class="chart-header">' + 
-            '<div class="chart-title-container">' + 
+    $('<div class="chart-header">' +
+            '<div class="chart-title-container">' +
                 '<div class="chart-title"><span style="color: ' + colorFormat(number) + '">' + numberFormatCommas(number) + '</span> ' + title + '</div>' +
             '</div>' + // end chart-title-container div
         '</div>') // end chart-header div
