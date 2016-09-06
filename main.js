@@ -74,7 +74,7 @@ $(document).ready(function() {
             indexDropdown.items.push({label: edition, value: edition});
         });
         // populate edition dropdown div
-        $('#index-dropdown').MPSelect(editionDropdown);
+        $('#index-dropdown').MPSelect(indexDropdown);
     });
 
     // populate platform dropdown div
@@ -207,6 +207,7 @@ function getSlots(platform, edition, slots, indexVal) {
 }
 
 function getStories(platform, edition, stories, sort, indexVal) {
+    indexVal = indexVal || 'all'
     // set base params
     var storyParams = {
         from_date: date_to_string(_.now() - 1000*60*60*totalHours),
