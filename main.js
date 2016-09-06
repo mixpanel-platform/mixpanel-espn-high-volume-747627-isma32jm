@@ -89,6 +89,12 @@ $(document).ready(function() {
         $('.slot').hide();
         getAllData();
     });
+
+    $('#index-dropdown').on('change', function() {
+        $('.loading').show();
+        $('.slot').hide();
+        getAllData();
+    });
     $('#platform-dropdown').on('change', function() {
         $('.loading').show();
         $('.slot').hide();
@@ -134,7 +140,7 @@ function getAllData() {
     // collect variables
     var platform = $('#platform-dropdown').val();
     var edition = $('#edition-dropdown').val() == '' ? 'all' : $('#edition-dropdown').val();
-    var indexVal = $('#index-dropdown').val();
+    var indexVal = $('#index-dropdown').val() || 'all';
     // get data
     if (sort === 'story') {
         var storyPromise = getStories(platform, edition, undefined, sortType, indexVal);
@@ -148,7 +154,7 @@ function getAllData() {
                 $('.slot').show();
             });
     } else if (sort === 'slot') {
-        var slotPromise = getSlots(platform, edition);
+        var slotPromise = getSlots(platform, edition, indexVal);
         // ensure jql queries occur in order, but other code can execute async
         slotPromise
             .then(function(slotData) {
