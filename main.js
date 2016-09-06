@@ -193,6 +193,7 @@ function getAllData() {
 
 function getSlots(platform, edition, slots, indexVal) {
     // set base params
+    indexVal = indexVal || 'all'
     var slotParams = {
         max_slots: totalSlots,
         from_date: date_to_string(_.now() - 1000*60*60*totalHours),
