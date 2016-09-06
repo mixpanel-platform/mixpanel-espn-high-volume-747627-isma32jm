@@ -67,6 +67,7 @@ $(document).ready(function() {
     MP.api.query('api/2.0/events/properties/values', {
         event: 'Page View',
         name: 'Sport/League',
+        limit: 255
     }).done(function(results) {
         _.each(results, function(edition) {
             // add each edition name to dropdown
