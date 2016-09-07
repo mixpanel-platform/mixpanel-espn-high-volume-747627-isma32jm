@@ -145,6 +145,7 @@ and ongoing code changes or iterations.
                    editionFilter && // edition name filter is satisfied
                    platformFilter && // platform filter is satisfied
                    indexFilter &&  // index filter is satisfied
+                   event.properties['Page Type'] == 'Index' &&
                    event.properties['Story Headline'] && // story headline exists
                   // event.properties['Referrer URL'] == 'http://espn.go.com/' && // story is from home page slot
                    event.properties['Referrer Placement Type'] == 'News Feed' && // story is in news feed
@@ -591,6 +592,7 @@ and ongoing code changes or iterations.
                    editionFilter && // edition name filter is satisfied
                    platformFilter && // platform filter is satisfied
                    indexFilter && // index filter is satisfied
+                   event.properties['Page Type'] == 'Index' &&
                    event.properties['Story Headline']; // story headline exists
           })
           .groupBy(['properties.Story Headline', getPublishDetail], function(accumulators, events) {
