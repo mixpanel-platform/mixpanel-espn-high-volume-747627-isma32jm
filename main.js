@@ -154,7 +154,7 @@ function getAllData() {
                 $('.slot').show();
             });
     } else if (sort === 'slot') {
-        var slotPromise = getSlots(platform, edition, indexVal);
+        var slotPromise = getSlots(platform, edition, undefined, indexVal);
         // ensure jql queries occur in order, but other code can execute async
         slotPromise
             .then(function(slotData) {
