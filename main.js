@@ -246,7 +246,7 @@ function sortData(sort, sortType, slotData, storyData) {
     var resultData = [];
     var obj = {
         slot: slotData,
-        story: _.sortBy(storyData, item => parseInt(item.current_slot))
+        story: _.sortBy(storyData, function(item){parseInt(item.current_slot)})
     }
     sortedData = _.first(_.sortBy(obj[sort], function(item, key) {
         if (sortType === 'current_slot') return item[sortType];
